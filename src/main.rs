@@ -1,8 +1,10 @@
-use std::path::Path;
+use petgraph::algo::{dijkstra, min_spanning_tree};
+use petgraph::data::FromElements;
+use petgraph::dot::{Config, Dot};
+use petgraph::graph::{NodeIndex, UnGraph};
 
 use anyhow::Result;
 use clap::Parser;
-use indradb;
 
 #[derive(Parser, Debug)]
 #[clap(author = "Sridhar Ratnakumar", version, about)]
@@ -20,31 +22,22 @@ fn main() -> Result<()> {
     let args = Args::parse();
     println!("DEBUG {args:?}");
 
-    let db: indradb::Database<indradb::MemoryDatastore> =
-        if Path::new(args.db_file.as_str()).exists() {
-            indradb::MemoryDatastore::read_msgpack_db(args.db_file)?
-        } else {
-            indradb::MemoryDatastore::create_msgpack_db(args.db_file)
-        };
+    // Create an undirected graph with `i32` nodes and edges with `()` associated data.
+    let g = UnGraph::<i32, ()>::from_edges(&[(1, 2), (2, 3), (3, 4), (1, 4)]);
 
-    // Create a couple of vertices
-    let out_v = indradb::Vertex::new(indradb::Identifier::new("person")?);
-    let in_v = indradb::Vertex::new(indradb::Identifier::new("movie")?);
-    db.create_vertex(&out_v)?;
-    db.create_vertex(&in_v)?;
+    // Find the shortest path from `1` to `4` using `1` as the cost for every edge.
+    let node_map = dijkstra(&g, 1.into(), Some(4.into()), |_| 1);
+    assert_eq!(&1i32, node_map.get(&NodeIndex::new(4)).unwrap());
 
-    // Add an edge between the vertices
-    let edge = indradb::Edge::new(out_v.id, indradb::Identifier::new("likes")?, in_v.id);
-    db.create_edge(&edge)?;
+    // Get the minimum spanning tree of the graph as a new graph, and check that
+    // one edge was trimmed.
+    let mst = UnGraph::<_, _>::from_elements(min_spanning_tree(&g));
+    assert_eq!(g.raw_edges().len() - 1, mst.raw_edges().len());
 
-    // Query for the edge
-    let output: Vec<indradb::QueryOutputValue> =
-        db.get(indradb::SpecificEdgeQuery::single(edge.clone()))?;
-    // Convenience function to extract out the edges from the query results
-    let e = indradb::util::extract_edges(output).unwrap();
-    assert_eq!(e.len(), 1);
-    assert_eq!(edge, e[0]);
-    println!("edge: {:?}", e[0]);
-    db.sync()?;
+    // Output the tree to `graphviz` `DOT` format
+    println!("{:?}", Dot::with_config(&mst, &[Config::EdgeNoLabel]));
+
+    serde_json::to_writer(std::io::stdout(), &g)?;
+
     Ok(())
 }

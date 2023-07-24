@@ -10,4 +10,6 @@ version = "0.1.0"
 [dependencies]
 anyhow = "1.0.72"
 clap = { version = "4.3.14", features = ["derive"] }
-indradb-lib = { version = "*", features = ["rocksdb-datastore"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+petgraph = { version = "0.6.3", features = ["serde-1"] }
